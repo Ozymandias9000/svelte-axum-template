@@ -5,6 +5,7 @@
 
 use axum::Router;
 use axum_sessions::{async_session::MemoryStore, SessionLayer};
+use dotenv::dotenv;
 use std::net::SocketAddr;
 use std::{env, sync::Arc};
 use tracing::log::warn;
@@ -16,16 +17,14 @@ mod services;
 mod store;
 
 // SETUP Constants
-const SESSION_COOKIE_NAME: &str = "axum_svelte_session";
-const FRONT_PUBLIC: &str = "./front_end/dist";
-const SERVER_PORT: &str = "8080";
-const SERVER_HOST: &str = "0.0.0.0";
 
 /// Server that is split into a Frontend to serve static files (Svelte) and Backend
 /// Backend is further split into a non authorized area and a secure area
 /// The Back end is using 2 middleware: sessions (managing session data) and user_secure (checking for authorization)
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
+
     // start tracing - level set by either RUST_LOG env variable or defaults to debug
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
@@ -44,9 +43,10 @@ async fn main() {
     // create store for backend.  Stores an api_token.
     let shared_state = Arc::new(store::Store::new("123456789"));
 
+    let session_cookie = env::var("SESSION_COOKIE_NAME").ok().unwrap();
     // setup up sessions and store to keep track of session information
-    let session_layer = SessionLayer::new(MemoryStore::new(), secret.as_bytes())
-        .with_cookie_name(SESSION_COOKIE_NAME);
+    let session_layer =
+        SessionLayer::new(MemoryStore::new(), secret.as_bytes()).with_cookie_name(session_cookie);
 
     // combine the front and backend into server
     let app = Router::new()
@@ -78,12 +78,8 @@ fn from_env() -> (String, String, String) {
         warn!("env var SERVER_SECRET should be set and unique (64 bytes long)");
     }
     (
-        env::var("SERVER_PORT")
-            .ok()
-            .unwrap_or_else(|| SERVER_PORT.to_string()),
-        env::var("SERVER_HOST")
-            .ok()
-            .unwrap_or_else(|| SERVER_HOST.to_string()),
+        env::var("SERVER_PORT").ok().unwrap(),
+        env::var("SERVER_HOST").ok().unwrap(),
         env::var("SERVER_SECRET").ok().unwrap_or_else(|| {
             "this needs to be 64bytes. recommended that you set Secret instead of fixed value"
                 .to_string()
